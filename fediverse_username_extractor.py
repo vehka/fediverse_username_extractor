@@ -3,9 +3,33 @@ import re
 import os
 import subprocess
 
+def convert_url_to_username(url):
+    """
+    Converts a Fediverse URL to a username format.
+    Examples: 
+    - https://instan.ce/@user -> @user@instan.ce
+    - https://small.town/@user/ -> @user@small.town
+
+    Args:
+        url: The Fediverse URL.
+
+    Returns:
+        A properly formatted Fediverse username.
+    """
+    # Extract the domain and username from the URL
+    url_pattern = r'https?://([^/]+)/@([^/\s]+)/?'
+    match = re.match(url_pattern, url)
+    if match:
+        domain, username = match.groups()
+        # Clean up username if it ends with a trailing slash or other characters
+        username = username.rstrip('/')
+        return f"@{username}@{domain}"
+    return None
+
 def extract_fediverse_usernames(text):
     """
     Extracts fediverse usernames from a given text using regular expressions.
+    Handles both standard username format (@user@instance) and URL format.
 
     Args:
         text: The input text.
@@ -13,13 +37,29 @@ def extract_fediverse_usernames(text):
     Returns:
         A set of unique fediverse usernames.
     """
-    pattern = r'@[^@\s]+@[^]\s]+'  # Modified regex
-    usernames = re.findall(pattern, text)
-    return set(usernames)
+    # Pattern for standard username format - only allow word chars, dots, and underscores in usernames
+    username_pattern = r'@[\w._-]+@[\w.-]+\w+'
+    # Pattern for URL format (e.g., https://instan.ce/@username)
+    url_pattern = r'https?://[^/\s]+/@[^/\s]+/?'
+    
+    usernames = set()
+    
+    # Find standard format usernames
+    standard_usernames = re.findall(username_pattern, text)
+    usernames.update(standard_usernames)
+    
+    # Find and convert URL format usernames
+    url_matches = re.findall(url_pattern, text)
+    for url in url_matches:
+        username = convert_url_to_username(url)
+        if username:
+            usernames.add(username)
+    
+    return usernames
 
 def clean_usernames(usernames):
     """
-    Removes trailing parentheses from usernames.
+    Cleans usernames by removing special characters and ensuring proper format.
 
     Args:
         usernames: A list of usernames.
@@ -29,11 +69,23 @@ def clean_usernames(usernames):
     """
     cleaned_usernames = []
     for username in usernames:
-        # Remove trailing dots, parentheses, and backticks
-        while username.endswith((".", ")", "`", ",")):
-            username = username[:-1]
-
-        cleaned_usernames.append(username)
+        # Split the username into parts
+        if not username.count('@') == 2:
+            continue
+            
+        parts = username.split('@')
+        if len(parts) != 3:
+            continue
+            
+        # Clean the username part (middle part) - only allow alphanumeric, dots, underscores, and hyphens
+        cleaned_user = re.sub(r'[^\w._-]', '', parts[1])
+        # Clean the domain part (last part) - only allow alphanumeric, dots, and hyphens
+        cleaned_domain = re.sub(r'[^\w.-]', '', parts[2])
+        
+        if cleaned_user and cleaned_domain:
+            cleaned_username = f"@{cleaned_user}@{cleaned_domain}"
+            cleaned_usernames.append(cleaned_username)
+            
     return cleaned_usernames
 
 def main():
